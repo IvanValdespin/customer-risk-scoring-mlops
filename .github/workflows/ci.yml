@@ -30,6 +30,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
+      - name: Generate synthetic data
+        run: |
+          python -m src.data.generate_synthetic_data --n-samples 1000
+      
+      - name: Train model
+        run: |
+          python -m src.training.train_model --model-version v1
+
       - name: Run tests
         run: |
           python -m pytest -v
