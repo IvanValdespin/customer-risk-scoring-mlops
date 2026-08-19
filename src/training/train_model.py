@@ -101,7 +101,7 @@ def build_preprocessor()->ColumnTransformer:
 
 def train_model(
         X_train: pd.DataFrame,
-        Y_train: pd.Series,
+        y_train: pd.Series,
         random_state: int,
 ) -> tuple[RandomForestClassifier,ColumnTransformer]:
     preprocessor = build_preprocessor()
@@ -118,7 +118,7 @@ def train_model(
         n_jobs= -1,
     )
 
-    model.fit(X_train_processed,Y_train)
+    model.fit(X_train_processed,y_train)
 
     return model,preprocessor
 
@@ -169,6 +169,7 @@ def save_artifacts(
     train_rows: int,
     test_rows: int,
 ) -> None:
+    
     MODELS_DIR.mkdir(parents=True,exist_ok=True)
     PREPROCESSORS.mkdir(parents=True, exist_ok=True)
     METADATA_DIR.mkdir(parents=True,exist_ok=True)
@@ -195,4 +196,79 @@ def save_artifacts(
         "input_data_path": str(input_path),
         "train_rows": train_rows,
         "test_rows":test_rows,
+        "random_state": random_state,
+        "artifacts": {
+            "model_path": str(model_path),
+            "preprocessor_path": str(preprocessor_path),
+            "metrics_path": str(metrics_path),
+        },
+        "main_metric": {
+            "name": "roc_auc",
+            "value": metrics["roc_auc"],
+        },
     }
+
+    save_json(metadata,metadata_path)
+    print("Artifacts saved successfully:")
+    print(f"Model: {model_path}")
+    print(f"Preprocessor: {preprocessor_path}")
+    print(f"Metrics: {metrics_path}")
+    print(f"Metadata: {metadata_path}")
+
+
+
+def main() ->None:
+    parser = argparse.ArgumentParser(description="Train customer risk scoring model.")
+    parser.add_argument("--input-file",type=str,default="customer_risk_data.csv")
+    parser.add_argument("--model-name",type=str,default="customer_risk_model")
+    parser.add_argument("--model-version",type=str,default="v1")
+    parser.add_argument("--test-size",type=float,default=0.2)
+    parser.add_argument("--random-state",type=int,default=42)
+
+    args = parser.parse_args()
+    input_path = RAW_DATA_DIR / args.input_file
+
+    df = load_data(input_path)
+    validate_training_data(df)
+
+    x = df[FEATURE_COLUMNS]
+    y = df[TARGET_COLUMN]
+
+    X_train,X_test,y_train,y_test = train_test_split(
+        x,
+        y,
+        test_size=args.test_size,
+        random_state=args.random_state,
+        stratify=y,
+    )
+
+    model,preprocessor = train_model(
+        X_train=X_train,
+        y_train = y_train,
+        random_state=args.random_state,
+    )
+
+    metrics = evaluate_model(
+        model=model,
+        preprocessor=preprocessor,
+        X_test=X_test,
+        y_test=y_test,
+    )
+
+    print("Model evaluation metrics:")
+    print(json.dumps(metrics,indent=2))
+
+    save_artifacts(
+        model=model,
+        preprocessor=preprocessor,
+        metrics=metrics,
+        model_name=args.model_name,
+        model_version=args.model_version,
+        random_state=args.random_state,
+        input_path=input_path,
+        train_rows=len(X_train),
+        test_rows=len(X_test),
+    )
+
+if __name__ == "__main__":
+    main()
